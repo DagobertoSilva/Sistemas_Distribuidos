@@ -422,6 +422,10 @@ docker volume inspect app_redis-dados
 docker compose down
 ```
 
+### Tentaiva de abrir a aplicaçao: POrém sem sucesso pois o serviço foi parado
+### http://localhost:5000
+
+
 | Comando/Parâmetro | Descrição |
 |---|---|
 | `docker compose` | Gerencia os serviços definidos no arquivo `docker-compose.yml`. |
@@ -429,6 +433,9 @@ docker compose down
 ```
 docker compose up -d
 ```
+
+### Tentaiva de abrir a aplicaçao: Com sucesso pois o serviço foi iniciado novamente agora com as informações salvas
+### http://localhost:5000
 
 | Comando/Parâmetro | Descrição |
 |---|---|
@@ -564,36 +571,50 @@ docker compose up -d --build
 # QUESTÕES DA PRÁTICA
 
 ## Questão 1: os serviços precisam se comunicar. Como fazer isso?
-### A solução é colocar os dois containers na mesma rede Docker. Nessa rede, a aplicação poderá acessar o Redis usando o nome redis, sem precisar descobrir seu endereço IP.
+### A solução é colocar os dois containers na mesma rede Docker. Nessa rede, a aplicação poderá acessar o Redis(armazenar o contador) usando o nome redis, sem precisar descobrir seu endereço IP.
+
+> EXEMPLO: Imagine que temos dois computadores em uma mesma sala: um executa a aplicação Flask e o outro executa o Redis. Para que eles conversem, precisamos colocá-los na mesma rede. No Docker, fazemos isso conectando os dois containers à mesma rede, permitindo que a aplicação envie informações para o Redis.
 #
 
 ## Questão 2: Por que utilizar o nome do serviço é mais adequado do que utilizar diretamente o IP do container? 
 
 ### Porque o IP de um container pode mudar quando ele é recriado. O nome do serviço permite que o Docker faça a resolução do endereço dentro da rede, tornando a configuração mais estável.
+
+> EXEMPLO: É como salvar o contato de uma pessoa pelo nome, em vez de tentar memorizar um número que pode mudar. Na nossa aplicação, usamos o nome `redis` para localizar o serviço. Assim, se o endereço IP do container mudar, não precisamos alterar o código da aplicação, desde que o nome do serviço seja mantido.
+
 #
 
 ## Questão 3: por que foi necessário utilizar --build? 
 ### Porque o código-fonte foi alterado, mas a imagem existente não é atualizada automaticamente quando você modifica um arquivo no computador. O --build solicita a reconstrução da imagem com a nova versão do código.
+
+> EXEMPLO: Imagine que eu alterei o código da minha aplicação Flask para mostrar o número de acessos à página. Se eu iniciar novamente o container sem reconstruir a imagem, posso continuar executando a versão antiga do código. Por isso, utilizamos docker compose up -d --build, para reconstruir a imagem e iniciar os serviços com as alterações.
 #
 
 ## uestão 4: Qual é a função do Dockerfile na aplicação? 
 ### O Dockerfile descreve as instruções necessárias para construir a imagem da aplicação, incluindo a escolha da imagem base, a definição do diretório de trabalho, a cópia dos arquivos, a instalação das dependências e o comando de inicialização.
+
+> EXEMPLO: O Dockerfile funciona como uma receita de bolo. Ele informa ao Docker quais ingredientes e etapas são necessários para preparar a aplicação. No nosso caso, especificamos o Python, copiamos o código Flask, instalamos as bibliotecas necessárias e definimos o comando que inicia a aplicação.
 #
 
 ## Questão 5 — Qual é a função do Redis nessa arquitetura?
 ### O Redis é utilizado como um banco de dados em memória para armazenar e atualizar o contador de acessos da aplicação Flask.
+
+> EXEMPLO: Quando um usuário acessa a página, a aplicação Flask solicita ao Redis que incremente o contador de acessos. Se for o primeiro acesso, o contador será 1; no segundo, será 2; e assim por diante. O Redis armazena esse valor para que a aplicação possa consultá-lo e atualizá-lo.
 #
 
 ## Questão 6 — Como o container Flask consegue encontrar o Redis sem conhecer seu endereço IP?
 ### Os dois serviços estão conectados à mesma rede Docker. O Docker fornece resolução de nomes nessa rede, permitindo que o Flask utilize o nome redis como endereço do serviço.
-
+> EXEMPLO: No código Python, definimos a variável `REDIS_HOST` com o valor `redis`. Quando o Flask precisa acessar o banco, ele utiliza esse nome como endereço. O Docker identifica qual container corresponde ao serviço `redis` e encaminha a comunicação, sem que precisemos informar manualmente o IP.
 #
 ## Questão 7 — Qual é a função do volume utilizado pelo Redis?
 ### O volume mantém os dados do Redis fora do ciclo de vida do container. Assim, os dados podem continuar disponíveis mesmo quando o container é removido e recriado, desde que o volume seja preservado e a persistência esteja configurada corretamente.
+
+> EXEMPLO: Imagine que o contador de acessos chegou a 50 e precisamos recriar o container do Redis. Sem persistência, podemos perder esse valor. Com um volume e a persistência do Redis configurados corretamente, os dados podem continuar armazenados e ser recuperados quando o serviço for iniciado novamente.
 #
 
 ## Questão 8 — Qual problema o Docker Compose resolve em relação à execução manual dos containers?
 ### O Docker Compose centraliza a configuração dos serviços, das redes, das portas, das variáveis de ambiente e dos volumes em um único arquivo. Isso simplifica a criação, a inicialização e o gerenciamento de aplicações compostas por vários containers.
+> EXEMPLO: Sem o Docker Compose, eu precisaria executar vários comandos manualmente para criar a rede, iniciar o Redis, configurar as portas e iniciar o Flask. Com o Compose, todas essas configurações ficam em um único arquivo YAML. Então, com o comando `docker compose up -d --build`, consigo construir as imagens e iniciar os serviços de forma organizada.
 #
 
 
