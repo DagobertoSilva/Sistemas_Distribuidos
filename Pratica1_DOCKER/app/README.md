@@ -595,3 +595,125 @@ docker compose up -d --build
 ## Questão 8 — Qual problema o Docker Compose resolve em relação à execução manual dos containers?
 ### O Docker Compose centraliza a configuração dos serviços, das redes, das portas, das variáveis de ambiente e dos volumes em um único arquivo. Isso simplifica a criação, a inicialização e o gerenciamento de aplicações compostas por vários containers.
 #
+
+
+
+---
+
+# Limpeza final — Remover os recursos criados no Docker
+
+Ao finalizar a prática, podemos liberar os recursos utilizados, removendo os containers, as redes, as imagens e, opcionalmente, os volumes criados.
+
+## Passo 1 — Verificar os serviços em execução
+
+No terminal, dentro da pasta que contém o arquivo `docker-compose.yml`, execute:
+
+```powershell
+docker compose ps
+```
+
+Esse comando permite verificar os containers gerenciados pelo Docker Compose.
+
+## Passo 2 — Parar e remover os containers e a rede
+
+Execute:
+
+```powershell
+docker compose down
+```
+
+**O que esse comando faz?**
+
+- Interrompe os serviços do Flask e do Redis.
+- Remove os containers criados pelo Docker Compose.
+- Remove a rede criada automaticamente para o projeto, desde que não esteja sendo utilizada por outros recursos.
+- Preserva os volumes nomeados, permitindo manter os dados do Redis.
+
+## Passo 3 — Verificar se os containers foram removidos
+
+```powershell
+docker compose ps -a
+```
+
+Também podemos consultar todos os containers do computador:
+
+```powershell
+docker ps -a
+```
+
+O primeiro comando mostra os containers do projeto Compose; o segundo lista os containers de todos os projetos.
+
+## Passo 4 — Remover as imagens utilizadas na prática (opcional)
+
+Se também quiser remover as imagens usadas pelo projeto, execute:
+
+```powershell
+docker compose down --rmi all
+```
+
+Esse comando remove os containers, as redes do projeto e as imagens associadas aos serviços, quando não estiverem sendo utilizadas por outros containers.
+
+Para verificar as imagens restantes:
+
+```powershell
+docker images
+```
+
+## Passo 5 — Remover o volume do Redis (opcional)
+
+**Atenção:** este passo apaga os dados persistidos pelo Redis no volume removido.
+
+Se quiser excluir também o volume nomeado do projeto, execute:
+
+```powershell
+docker compose down -v
+```
+
+A opção `-v` remove os volumes nomeados declarados no arquivo Compose e associados ao projeto.
+
+Para verificar os volumes restantes:
+
+```powershell
+docker volume ls
+```
+
+## Passo 6 — Fazer a limpeza completa do projeto (opcional)
+
+Se o objetivo for remover os containers, as redes do projeto, as imagens associadas e os volumes, execute:
+
+```powershell
+docker compose down --rmi all --volumes --remove-orphans
+```
+
+**Significado dos parâmetros:**
+
+| Parâmetro | Função |
+|---|---|
+| `down` | Para e remove os containers e as redes do projeto. |
+| `--rmi all` | Solicita a remoção das imagens utilizadas pelos serviços, quando possível. |
+| `--volumes` | Remove os volumes nomeados declarados no Compose e associados ao projeto. |
+| `--remove-orphans` | Remove containers do projeto que não correspondem mais aos serviços declarados no arquivo Compose. |
+
+Depois, verifique os recursos restantes:
+
+```powershell
+docker ps -a
+```
+```powershell
+docker images
+```
+```powershell
+docker volume ls
+```
+
+```powershell
+docker network ls
+```
+
+Esses comandos mostram os containers, as imagens, os volumes e as redes que continuam disponíveis no computador. Outros projetos Docker podem continuar utilizando recursos próprios.
+
+> **Importante:** a limpeza completa remove os dados armazenados no volume do Redis. Se quiser preservar o contador de acessos para uma demonstração futura, utilize somente `docker compose down`.
+
+## Conclusão
+
+Ao realizar a limpeza, encerramos o ambiente da prática e liberamos os recursos que não serão mais utilizados. Isso demonstra que o Docker Compose também facilita o gerenciamento do ciclo de vida de uma aplicação, desde a criação dos serviços até sua remoção.
