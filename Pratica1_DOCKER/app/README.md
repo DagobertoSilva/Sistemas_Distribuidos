@@ -548,6 +548,13 @@ if __name__ == "__main__":
 docker compose up -d --build
 ```
 
+| Comando/Parâmetro | Descrição |
+|---|---|
+| `docker compose` | Gerencia os serviços definidos no arquivo `docker-compose.yml`. |
+| `up` | Cria e inicia os containers dos serviços configurados. |
+| `-d` | Executa os containers em segundo plano (*detached mode*). |
+| `--build` | Constrói ou reconstrói as imagens antes de iniciar os serviços. |
+
 ### Abra novamente e ver a alteração feita:
 ### http://localhost:5000
 
