@@ -1,171 +1,277 @@
-# Segunda Prática de Sistemas Distribuídos — Kubernetes
+# Prática 2 – Kubernetes (Sistemas Distribuídos)
 
-**Universidade Federal do Ceará (UFC) — Campus de Crateús**  
-**Disciplina:** Sistemas Distribuídos  
+**Universidade Federal do Ceará – Campus de Crateús**
+**Disciplina:** Sistemas Distribuídos 
+
 **Professor:** Anderson Almada
 
-## 1. Objetivo
+**Aluno(a):** Francisco Dagoberto 
 
-Nesta prática, a aplicação Flask que contabiliza acessos utilizando Redis, desenvolvida na Primeira Prática, será implantada e gerenciada com Kubernetes em um cluster local Minikube.
+Implantação e gerenciamento, com **Kubernetes (Minikube)**, de uma aplicação **Flask** que contabiliza o número de acessos usando o **Redis**. A aplicação é a mesma da Primeira Prática (que usava Docker Compose).
 
-Os objetivos são:
+> 🎥 **Vídeo de demonstração:** _cole aqui o link do vídeo_
 
-- executar várias instâncias da aplicação;
-- distribuir requisições por meio de um Service;
-- manter o número desejado de Pods;
-- aumentar e diminuir a quantidade de réplicas;
-- observar a recuperação após a exclusão de um Pod (*Self-Healing*);
-- atualizar a aplicação gradualmente (*Rolling Update*);
-- retornar a uma versão anterior (*Rollback*).
+---
 
-> **Pré-requisito:** ter a aplicação da Primeira Prática e seu `Dockerfile` funcionando. Esta prática reutiliza esses arquivos; não é necessário recriar a aplicação nem utilizar Docker Compose para executar o Kubernetes.
+## Sumário
 
-## 2. Arquitetura
+1. [Arquitetura](#arquitetura)
+2. [Estrutura do repositório](#estrutura-do-repositório)
+3. [Pré-requisitos](#pré-requisitos)
+4. [Passo a passo](#passo-a-passo)
+   1. [Iniciar o cluster](#1-iniciar-o-cluster)
+   2. [Construir a imagem](#2-construir-a-imagem-no-minikube)
+   3. [Manifestos](#3-manifestos-kubernetes)
+   4. [Aplicar e acessar](#4-aplicar-e-acessar-a-aplicação)
+   5. [Escalar](#5-escalar-a-aplicação)
+   6. [Self-healing](#6-self-healing)
+   7. [Rolling update](#7-rolling-update)
+   8. [Rollback](#8-rollback)
+5. [Respostas das questões](#respostas-das-questões)
+6. [Limitações](#limitações)
+7. [Solução de problemas](#solução-de-problemas)
+8. [Comandos úteis](#comandos-úteis)
 
-```text
-                     Navegador
-                         |
-                         v
-               Service contador
-                    (NodePort)
-                         |
-             +-----------+-----------+
-             |           |           |
-             v           v           v
-         Pod Flask   Pod Flask   Pod Flask
-             |           |           |
-             +-----------+-----------+
-                         |
-                  Service redis
-                         |
-                         v
-                     Pod Redis
+---
+
+## Arquitetura
+
+Na Primeira Prática o fluxo era `Navegador → Flask/App → Redis → Volume` (Docker Compose). Agora a aplicação roda em um cluster Kubernetes para permitir várias instâncias, balanceamento de carga, recuperação automática, escalabilidade e atualizações sem interrupção.
+
+```
+Navegador
+   |
+   v   (porta NodePort exposta pelo Minikube)
+[Service contador]   tipo NodePort, porta 5050, selector app=contador
+   |      |      |         <- balanceia entre os Pods
+   v      v      v
+[Pod Flask] [Pod Flask] [Pod Flask]    Deployment contador-deployment (3 réplicas)
+   \       |       /
+    \      |      /    usam o host "redis" (DNS do cluster)
+     v     v     v
+   [Service redis]   tipo ClusterIP, porta 6379, selector app=redis
+          |
+          v
+     [Pod Redis]     Deployment redis-deployment (1 réplica)
 ```
 
-O Deployment da aplicação começa com três réplicas. O Redis começa com uma réplica. O Service `contador` disponibiliza a aplicação, enquanto o Service `redis` fornece um endereço estável para a comunicação interna.
+| Objeto | Nome | Função |
+|---|---|---|
+| Deployment | `contador-deployment` | Executa 3 réplicas do Flask (`contador:1.0`) |
+| Deployment | `redis-deployment` | Executa 1 réplica do Redis (`redis:latest`) |
+| Service (ClusterIP) | `redis` | Ponto de acesso estável ao Redis (porta 6379) |
+| Service (NodePort) | `contador` | Expõe a aplicação para fora do cluster (porta 5050) |
 
-## 3. Pré-requisitos
+---
 
-Verifique se Docker Desktop, Minikube e `kubectl` estão instalados.
+## Estrutura do repositório
 
-No PowerShell, execute:
+```
+pratica-kubernetes/
+├── app.py                    # aplicação Flask (da Primeira Prática)
+├── requirements.txt
+├── Dockerfile
+├── k8s/
+│   ├── app-deployment.yaml
+│   ├── redis-deployment.yaml
+│   ├── redis-service.yaml
+│   └── app-service.yaml
+├── docs/
+│   ├── img/                  # prints de cada etapa
+│   └── respostas.md          # (opcional) respostas das 9 questões
+├── .gitignore
+└── README.md
+```
 
-```powershell
+---
+
+## Pré-requisitos
+
+- Docker (ou outro driver compatível com o Minikube)
+- [Minikube](https://minikube.sigs.k8s.io/)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- Git
+
+```bash
 docker --version
 minikube version
 kubectl version --client
+git --version
 ```
 
-Se algum comando não for reconhecido, instale ou configure a ferramenta correspondente antes de continuar.
+> Se o `kubectl` não estiver instalado separadamente, use `minikube kubectl -- <comando>` no lugar de `kubectl <comando>` (ou crie o alias `alias kubectl="minikube kubectl --"`).
 
-## 4. Iniciar o Minikube
+---
 
-Inicie o cluster local:
+## Aplicação
 
-```powershell
+A aplicação Flask incrementa um contador no Redis a cada acesso. Pontos importantes para rodar no Kubernetes:
+
+1. O host do Redis vem da variável de ambiente **`REDIS_HOST`**.
+2. O Flask escuta em **`0.0.0.0`**, na porta **5050**.
+
+**`app.py`**
+
+```python
+from flask import Flask
+import redis
+import os
+
+app = Flask(__name__)
+
+# Nome do host do Redis
+redis_host = os.getenv("REDIS_HOST", "localhost")
+
+# Conexão com o Redis
+r = redis.Redis(
+    host=redis_host,
+    port=6379,
+    decode_responses=True
+)
+
+@app.route("/")
+def home():
+    # Incrementa o número de acessos
+    acessos = r.incr("acessos")
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Prática Docker</title>
+    </head>
+    <body>
+        <h1>Olá, Docker! Prática de Sistemas Distribuídos</h1>
+        <p>Número de acessos: {acessos}</p>
+    </body>
+    </html>
+    """
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5050)
+
+```
+
+`requirements.txt`:
+
+```
+flask
+redis
+```
+
+`Dockerfile`:
+
+```dockerfile
+# Imagem base Python 
+FROM python:3.9-slim
+
+# Diretório de trabalho dentro do container 
+WORKDIR /app 
+
+# Copiar dependências e instalá-las 
+COPY requirements.txt . 
+RUN pip install --no-cache-dir -r requirements.txt 
+
+# Copiar os arquivos da aplicação 
+COPY . . 
+
+# Expor a porta padrão do Flask 
+EXPOSE 5050 
+
+# Comando para iniciar a aplicação 
+CMD ["python", "app.py"]
+```
+
+> Ajuste este trecho se o seu `app.py` da Primeira Prática for diferente (por exemplo, outra porta).
+
+---
+
+## Passo a passo
+
+> As saídas mostradas são **exemplos**: nomes de Pods (sufixos aleatórios), IPs, portas NodePort e tempos serão diferentes em cada máquina.
+
+### 1. Iniciar o cluster
+
+```bash
 minikube start
 ```
 
-Confira os nós do cluster:
-
-```powershell
+```bash
 kubectl get nodes
 ```
 
-O nó deverá ficar com o status `Ready`.
+Saída esperada:
 
-## 5. Preparar a imagem da aplicação
-
-Abra o PowerShell no diretório que contém o `Dockerfile` e o código da aplicação Flask.
-
-Exemplo de navegação — ajuste o caminho conforme a localização do seu projeto:
-
-```powershell
-cd "C:\caminho\para\seu\projeto"
+```
+NAME       STATUS   ROLES           AGE   VERSION
+minikube   Ready    control-plane   1m    vX.XX.X
 ```
 
-Construa a imagem dentro do ambiente Minikube:
+O **nó (node)** é uma máquina, física ou virtual, que faz parte do cluster e fornece CPU, memória e rede para executar os Pods. `STATUS Ready` indica que está pronto para receber Pods. No Minikube existe um único nó, que também faz o papel de plano de controle (`control-plane`).
 
-```powershell
+![nodes](docs/img/01-nodes.png)
+
+### 2. Construir a imagem no Minikube
+
+O Minikube roda em um ambiente isolado e não enxerga as imagens do Docker local, então a imagem precisa ser construída **dentro** dele.
+
+#### na pasta onde está o Dockerfile
+```bash
 minikube image build -t contador:1.0 .
 ```
-
-Confira as imagens disponíveis:
-
-```powershell
-minikube image ls
+```bash
+minikube image ls 
 ```
 
-No PowerShell, você pode filtrar o resultado assim:
+Saída esperada:
 
-```powershell
-minikube image ls | Select-String contador
+```
+docker.io/library/contador:1.0
 ```
 
-O Deployment utilizará a imagem `contador:1.0`.
 
-> **Atenção à porta:** os manifestos desta prática utilizam a porta `5050` para a aplicação. Confira se o Flask e o `Dockerfile` da Primeira Prática estão configurados de acordo. Se a aplicação escutar em outra porta, ajuste o código e os manifestos de forma consistente.
 
-## 6. Criar a pasta dos manifestos
+### 3. Manifestos Kubernetes
 
-Na raiz do projeto, crie a pasta `k8s`:
+Os 4 arquivos ficam na pasta `k8s/`.
 
-```powershell
-New-Item -ItemType Directory -Force -Path k8s
-```
+| Arquivo | Função |
+|---|---|
+| `app-deployment.yaml` | 3 réplicas do Flask, variável `REDIS_HOST=redis` |
+| `redis-deployment.yaml` | 1 réplica do Redis |
+| `redis-service.yaml` | Service `redis` (ClusterIP, porta 6379) |
+| `app-service.yaml` | Service `contador` (NodePort, porta 5050) |
 
-Crie dentro dela os quatro arquivos:
-
-```text
-k8s/
-├── app-deployment.yaml
-├── redis-deployment.yaml
-├── redis-service.yaml
-└── app-service.yaml
-```
-
-## 7. Deployment da aplicação Flask
-
-Crie o arquivo `k8s/app-deployment.yaml`:
+**`k8s/app-deployment.yaml`**
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: contador-deployment
+  name: contador-deployment       # nome usado nos comandos rollout
 spec:
-  replicas: 3
+  replicas: 3                     # estado desejado: 3 Pods
   selector:
     matchLabels:
-      app: contador
-  template:
+      app: contador               # este Deployment gerencia Pods com esta label
+  template:                       # molde dos Pods
     metadata:
       labels:
-        app: contador
+        app: contador             # label dos Pods (deve bater com o selector)
     spec:
       containers:
         - name: contador
           image: contador:1.0
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: IfNotPresent   # não baixar da internet
           ports:
             - containerPort: 5050
           env:
             - name: REDIS_HOST
-              value: redis
+              value: "redis"      # DNS do Service do Redis
 ```
 
-**Explicação:**
-
-- `kind: Deployment`: define o recurso que gerencia as réplicas da aplicação.
-- `replicas: 3`: solicita três Pods da aplicação.
-- `image: contador:1.0`: seleciona a imagem construída anteriormente.
-- `containerPort: 5050`: documenta a porta utilizada pela aplicação.
-- `REDIS_HOST: redis`: configura o endereço do serviço Redis.
-- `app: contador`: identifica os Pods que serão selecionados pelo Service da aplicação.
-
-## 8. Deployment do Redis
-
-Crie `k8s/redis-deployment.yaml`:
+**`k8s/redis-deployment.yaml`**
 
 ```yaml
 apiVersion: apps/v1
@@ -180,7 +286,7 @@ spec:
   template:
     metadata:
       labels:
-        app: redis
+        app: redis              # o Service do Redis procura esta label
     spec:
       containers:
         - name: redis
@@ -189,33 +295,22 @@ spec:
             - containerPort: 6379
 ```
 
-Esse manifesto cria um Deployment com uma réplica do Redis, utilizando a imagem `redis:latest` e a porta `6379`.
-
-> **Observação:** este manifesto não configura volume persistente para o Redis. Portanto, não considere garantida a preservação dos dados caso o Pod Redis seja recriado.
-
-## 9. Service do Redis
-
-Crie `k8s/redis-service.yaml`:
+**`k8s/redis-service.yaml`**
 
 ```yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis
+  name: redis                   # vira o nome DNS "redis" dentro do cluster
 spec:
-  type: ClusterIP
   selector:
-    app: redis
+    app: redis                  # envia para Pods com label app=redis
   ports:
-    - port: 6379
-      targetPort: 6379
+    - port: 6379                # porta do Service
+      targetPort: 6379          # porta do container Redis
 ```
 
-O Service `redis` fornece um endereço estável dentro do cluster e encaminha as conexões para os Pods que possuem a label `app: redis`.
-
-## 10. Service da aplicação
-
-Crie `k8s/app-service.yaml`:
+**`k8s/app-service.yaml`**
 
 ```yaml
 apiVersion: v1
@@ -223,322 +318,497 @@ kind: Service
 metadata:
   name: contador
 spec:
-  type: NodePort
+  type: NodePort                # abre uma porta no nó do cluster
   selector:
-    app: contador
+    app: contador               # envia para Pods com label app=contador
   ports:
-    - port: 5050
-      targetPort: 5050
+    - port: 5050                # porta do Service
+      targetPort: 5050          # porta em que o Flask escuta no container
 ```
 
-O Service `contador` disponibiliza a aplicação por meio do tipo `NodePort`. Seu seletor `app: contador` identifica os Pods que podem receber as requisições.
+Validação da sintaxe antes de aplicar:
 
-## 11. Aplicar os manifestos
+No Terminal: 
+```bash
+kubectl apply --dry-run=client -f k8s/
+```
 
-Execute na raiz do projeto, onde está a pasta `k8s`:
-
-```powershell
+### 4. Aplicar e acessar a aplicação
+No Terminal: 
+```bash
 kubectl apply -f k8s/
 ```
+Saída esperada:
+```
+deployment.apps/contador-deployment created
+service/contador created
+deployment.apps/redis-deployment created
+service/redis created
+```
 
-Verifique os Pods:
 
-```powershell
+
+Verificação dos recursos (esperado: 3 Pods do app + 1 do Redis, 2 Deployments e 2 Services):
+
+No Terminal: 
+```bash
 kubectl get pods
 ```
-
-Verifique os Deployments:
-
-```powershell
+Saída Esperada
+```
+NAME                                   READY   STATUS    RESTARTS   AGE
+contador-deployment-7d9c8b6f5d-4kq2x   1/1     Running   0          25s
+contador-deployment-7d9c8b6f5d-9wz7p   1/1     Running   0          25s
+contador-deployment-7d9c8b6f5d-hv5tn   1/1     Running   0          25s
+redis-deployment-5c6b7f9d8-m8z2p       1/1     Running   0          25s
+```
+No Terminal
+```bash
 kubectl get deployments
 ```
+Saída esperada:
+```
+NAME                  READY   UP-TO-DATE   AVAILABLE   AGE
+contador-deployment   3/3     3            3           30s
+redis-deployment      1/1     1            1           30s
+```
 
-Verifique os Services:
-
-```powershell
+No Terminal
+```bash
 kubectl get services
 ```
 
-### Resultado esperado
-
-- três Pods da aplicação Flask;
-- um Pod do Redis;
-- dois Deployments;
-- dois Services.
-
-A inicialização pode levar alguns instantes. Para acompanhar os Pods continuamente:
-
-```powershell
-kubectl get pods -w
+Saída esperada:
+```
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+contador     NodePort    10.101.x.x      <none>        5050:3xxxx/TCP   35s
+kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP          6m
+redis        ClusterIP   10.108.x.x      <none>        6379/TCP         35s
 ```
 
-Pressione `Ctrl + C` para encerrar o acompanhamento.
+Como ler: `READY 1/1` indica que o container do Pod está pronto; `3/3` no Deployment indica que as 3 réplicas desejadas estão disponíveis; em `PORT(S)`, `5050:3xxxx` significa porta 5050 do Service mapeada para uma porta alta (NodePort) no nó. O Service `kubernetes` pertence ao próprio cluster.
 
-Se algum Pod não iniciar, consulte:
 
-```powershell
-kubectl describe pods
-kubectl logs deployment/contador-deployment
-kubectl logs deployment/redis-deployment
+
+Comandos para entender a ligação entre Services e Pods:
+
+No Terminal:
+```bash
+kubectl get pods --show-labels
+```
+```bash
+kubectl get endpoints contador
 ```
 
-## 12. Acessar a aplicação
+```bash
+kubectl get endpoints redis
+```
+```bash
+kubectl describe service contador
+```
+```bash
+kubectl get pods -o wide
+```
 
-Execute:
-
-```powershell
+Acesso pelo navegador:
+No Terminal
+```bash
 minikube service contador --url
 ```
 
-Copie a URL exibida e abra-a no navegador. A aplicação deverá apresentar a mensagem e o contador de acessos.
 
-Atualize a página algumas vezes para verificar se o contador aumenta.
 
-Se houver problemas, confira:
+http://127.0.0.1:65437
 
-```powershell
-kubectl get pods
-kubectl get services
-kubectl get endpoints
-kubectl logs deployment/contador-deployment
-```
 
-## 13. Escalar a aplicação
+Abra a URL e atualize a página várias vezes: o contador aumenta e o nome do Pod alterna entre as réplicas, evidenciando o balanceamento de carga.
 
-### 13.1 Aumentar de três para cinco réplicas
+> Dependendo do driver (Docker no Windows/macOS), o comando usa uma porta local (ex.: `127.0.0.1:xxxxx`) e o terminal precisa ficar aberto.
 
-```powershell
+![navegador](imagens/praticaKubernetes.png)
+
+### 5. Escalar a aplicação
+
+Aumentar para 5 réplicas:
+
+No Terminal:
+
+```bash
 kubectl scale deployment contador-deployment --replicas=5
 ```
 
-Confira o resultado:
-
-```powershell
+Saída Esperada:
+```
+deployment.apps/contador-deployment scaled
+```
+No Terminal:
+```bash
 kubectl get pods
-kubectl get deployments
+```
+Saída Esperada:
+```
+NAME                                   READY   STATUS              RESTARTS   AGE
+contador-deployment-7d9c8b6f5d-4kq2x   1/1     Running             0          6m
+contador-deployment-7d9c8b6f5d-9wz7p   1/1     Running             0          6m
+contador-deployment-7d9c8b6f5d-hv5tn   1/1     Running             0          6m
+contador-deployment-7d9c8b6f5d-p2c8d   0/1     ContainerCreating   0          2s
+contador-deployment-7d9c8b6f5d-x6jlf   0/1     ContainerCreating   0          2s
+redis-deployment-5c6b7f9d8-m8z2p       1/1     Running             0          6m
 ```
 
-Aguarde até que as cinco réplicas da aplicação estejam prontas.
 
-### 13.2 Reduzir de cinco para duas réplicas
+Reduzir para 2 réplicas:
 
-```powershell
+No Terminal: 
+```bash
 kubectl scale deployment contador-deployment --replicas=2
 ```
-
-Confira novamente:
-
-```powershell
-kubectl get pods
-kubectl get deployments
-```
-
-O Deployment ajusta automaticamente a quantidade de Pods para corresponder ao número solicitado.
-
-## 14. Testar o Self-Healing
-
-O Deployment tenta manter o número desejado de réplicas. Para observar esse comportamento, exclua um Pod da aplicação.
-
-Primeiro, liste os Pods:
-
-```powershell
+```bash
 kubectl get pods
 ```
-
-Copie o nome de um Pod da aplicação e execute o comando abaixo, substituindo `NOME_DO_POD` pelo nome real:
-
-```powershell
-kubectl delete pod NOME_DO_POD
+Saída Esperada:
+```
+NAME                                   READY   STATUS        RESTARTS   AGE
+contador-deployment-7d9c8b6f5d-4kq2x   1/1     Running       0          7m
+contador-deployment-7d9c8b6f5d-9wz7p   1/1     Running       0          7m
+contador-deployment-7d9c8b6f5d-hv5tn   1/1     Terminating   0          7m
+contador-deployment-7d9c8b6f5d-p2c8d   1/1     Terminating   0          1m
+contador-deployment-7d9c8b6f5d-x6jlf   1/1     Terminating   0          1m
+redis-deployment-5c6b7f9d8-m8z2p       1/1     Running       0          7m
 ```
 
-Observe os Pods:
 
-```powershell
-kubectl get pods -w
+Escalar é apenas alterar o número desejado de réplicas: o Deployment (via ReplicaSet) cria ou remove Pods até chegar nesse número. O navegador continua funcionando durante o processo, pois o contador está no Redis, que não foi alterado.
+
+### 6. Self-healing
+No Terminal: 
+```bash
+kubectl get pods
 ```
 
-O Pod excluído será removido, e o Deployment deverá criar outro para manter a quantidade desejada de réplicas. O novo Pod terá um nome diferente.
-
-Pressione `Ctrl + C` para parar de acompanhar.
-
-## 15. Fazer o Rolling Update
-
-### 15.1 Alterar a mensagem da aplicação
-
-Abra o arquivo da aplicação Flask e altere a mensagem exibida, por exemplo, para:
-
-```text
-Olá, Kubernetes!
+```bash
+kubectl delete pod <nome-do-pod>
 ```
 
-Salve o arquivo.
+```bash
+kubectl get pods
+```
 
-### 15.2 Construir a nova imagem
+Saída Esperada
+```
+NAME                                   READY   STATUS              RESTARTS   AGE
+contador-deployment-7d9c8b6f5d-4kq2x   1/1     Terminating         0          9m
+contador-deployment-7d9c8b6f5d-9wz7p   1/1     Running             0          9m
+contador-deployment-7d9c8b6f5d-b4m9q   0/1     ContainerCreating   0          1s
+redis-deployment-5c6b7f9d8-m8z2p       1/1     Running             0          9m
+```
 
-No diretório que contém o `Dockerfile`, execute:
+Um Pod **novo**, com nome diferente e poucos segundos de vida, é criado para substituir o removido, e o total de Pods volta ao estado desejado.
 
-```powershell
+
+
+### 7. Rolling update
+
+`app.py` Antes:
+
+```python
+from flask import Flask
+import redis
+import os
+
+app = Flask(__name__)
+
+# Nome do host do Redis
+redis_host = os.getenv("REDIS_HOST", "localhost")
+
+# Conexão com o Redis
+r = redis.Redis(
+    host=redis_host,
+    port=6379,
+    decode_responses=True
+)
+
+@app.route("/")
+def home():
+    # Incrementa o número de acessos
+    acessos = r.incr("acessos")
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Prática Docker</title>
+    </head>
+    <body>
+        <h1>Olá, Docker! Prática de Sistemas Distribuídos</h1>
+        <p>Número de acessos: {acessos}</p>
+    </body>
+    </html>
+    """
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5050)
+
+```
+
+`app.py` Depois:
+
+```python
+from flask import Flask
+import redis
+import os
+
+app = Flask(__name__)
+
+# Nome do host do Redis
+redis_host = os.getenv("REDIS_HOST", "localhost")
+
+# Conexão com o Redis
+r = redis.Redis(
+    host=redis_host,
+    port=6379,
+    decode_responses=True
+)
+
+@app.route("/")
+def home():
+    # Incrementa o número de acessos
+    acessos = r.incr("acessos")
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Prática Docker</title>
+    </head>
+    <body>
+        <h1>Olá, Kubernetes!</h1>
+        <p>Número de acessos: {acessos}</p>
+    </body>
+    </html>
+    """
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5050)
+
+```
+
+
+**7.1 Alterar a mensagem** em `app.py`:
+
+Antes:
+```html
+ <body>
+      <h1>Olá, Docker! Prática de Sistemas Distribuídos</h1>
+      <p>Número de acessos: {acessos}</p>
+  </body>
+```
+
+Depois:
+```html
+   <body>
+        <h1>Olá, Kubernetes!</h1>
+        <p>Número de acessos: {acessos}</p>
+    </body>
+```
+
+**7.2 Construir a imagem 2.0:**
+
+No Terminal:
+```bash
 minikube image build -t contador:2.0 .
 ```
 
-Confira se a imagem aparece na lista:
-
-```powershell
-minikube image ls | Select-String contador
+```bash
+minikube image ls 
+```
+Saída Esperada
+```
+docker.io/library/contador:1.0
+docker.io/library/contador:2.0
 ```
 
-### 15.3 Atualizar o Deployment
+**7.3 Trocar a imagem** em `k8s/app-deployment.yaml`:
 
-Abra `k8s/app-deployment.yaml` e altere:
+Na linha 17, Antes
 
 ```yaml
 image: contador:1.0
 ```
-
-para:
-
+Na linha 17, Depois
 ```yaml
 image: contador:2.0
 ```
 
-Salve o arquivo e aplique a alteração:
+Opcionalmente, a estratégia pode ser declarada explicitamente dentro de `spec`:
 
-```powershell
-kubectl apply -f k8s/app-deployment.yaml
+```yaml
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # até 1 Pod a mais que o desejado durante a troca
+      maxUnavailable: 0    # nenhum Pod pode ficar indisponível
 ```
 
-Acompanhe o processo:
+**7.4 Aplicar e acompanhar** (em outro terminal, `kubectl get pods -w` mostra Pods antigos e novos convivendo):
 
-```powershell
+No Terminal: 
+```bash
+kubectl apply -f k8s/app-deployment.yaml
+```
+Saída Esperada: 
+```
+deployment.apps/contador-deployment configured
+```
+No Terminal: 
+```bash
 kubectl rollout status deployment/contador-deployment
 ```
 
-Confira os Pods:
+```
+Waiting for deployment "contador-deployment" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "contador-deployment" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "contador-deployment" rollout to finish: 1 old replicas are pending termination...
+deployment "contador-deployment" successfully rolled out
+```
 
-```powershell
+
+
+**7.5 Pods, histórico e navegador:**
+
+```bash
 kubectl get pods
 ```
-
-Consulte o histórico:
-
-```powershell
+```bash
 kubectl rollout history deployment/contador-deployment
 ```
+Saída Esperada:
 
-Para consultar uma revisão específica, conforme o histórico disponível:
-
-```powershell
+```
+deployment.apps/contador-deployment
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+```
+```bash
 kubectl rollout history deployment/contador-deployment --revision=2
 ```
 
-Quando a atualização terminar, abra novamente a URL obtida com `minikube service contador --url` e confira a nova mensagem.
+(Opcional) para preencher a coluna `CHANGE-CAUSE`:
 
-## 16. Fazer o Rollback
+```bash
+kubectl annotate deployment/contador-deployment kubernetes.io/change-cause="atualiza para 2.0"
+```
 
-Para retornar à revisão anterior do Deployment, execute:
 
-```powershell
+### 8. Rollback
+No Terminal:
+```bash
 kubectl rollout undo deployment/contador-deployment
 ```
-
-Acompanhe o processo:
-
-```powershell
+```bash
 kubectl rollout status deployment/contador-deployment
 ```
+```bash
+kubectl get pods
+```
+```bash
+kubectl rollout history deployment/contador-deployment
+```
 
-Confira a configuração do Deployment:
+Saída Esperada:
+```
+deployment.apps/contador-deployment rolled back
+...
+deployment "contador-deployment" successfully rolled out
 
-```powershell
+REVISION  CHANGE-CAUSE
+2         <none>
+3         <none>
+```
+Acesso pelo navegador:
+No Terminal
+```bash
+minikube service contador --url
+```
+
+Aparecem as revisões 2 e 3 porque o rollback volta ao conteúdo da revisão 1 (imagem `1.0`), mas o Kubernetes registra isso como uma **nova** revisão (3) e remove a antiga 1 da lista. Para confirmar a imagem em uso:
+
+```bash
 kubectl describe deployment contador-deployment
 ```
 
-Abra novamente a aplicação no navegador. A mensagem deverá voltar à versão anterior correspondente à revisão restaurada.
 
-## 17. Comandos úteis para a demonstração
 
-| Objetivo | Comando |
-|---|---|
-| Ver os nós | `kubectl get nodes` |
-| Ver os Pods | `kubectl get pods` |
-| Ver os Deployments | `kubectl get deployments` |
-| Ver os Services | `kubectl get services` |
-| Ver os detalhes dos Pods | `kubectl describe pods` |
-| Ver logs da aplicação | `kubectl logs deployment/contador-deployment` |
-| Ver logs do Redis | `kubectl logs deployment/redis-deployment` |
-| Escalar o Deployment | `kubectl scale deployment contador-deployment --replicas=5` |
-| Acompanhar atualização | `kubectl rollout status deployment/contador-deployment` |
-| Consultar histórico | `kubectl rollout history deployment/contador-deployment` |
-| Desfazer atualização | `kubectl rollout undo deployment/contador-deployment` |
-| Acessar a aplicação | `minikube service contador --url` |
-
-## 18. Respostas às questões da prática
-
-### Questão 1 — O que representa o nó apresentado pelo comando `kubectl get nodes`?
-
-O nó representa uma máquina do cluster Kubernetes que disponibiliza recursos para executar os Pods. No Minikube, normalmente é um nó local utilizado como ambiente de execução do cluster.
-
-### Questão 2 — Por que a aplicação deve utilizar `redis` em `REDIS_HOST`, em vez do endereço IP de um Pod Redis?
-
-Porque o IP de um Pod pode mudar quando ele é recriado. Utilizar o nome do Service `redis` fornece um ponto de acesso estável, e o Kubernetes encaminha as requisições aos Pods selecionados pelo serviço.
-
-### Questão 3 — Por que a aplicação possui três réplicas enquanto o Redis possui apenas uma réplica nesta prática?
-
-A aplicação web pode executar múltiplas instâncias para distribuir requisições e aumentar sua capacidade de atendimento. O Redis possui uma réplica nesta atividade para simplificar a arquitetura e o exercício.
-
-### Questão 4 — Qual é a função do Service do Redis?
-
-O Service do Redis fornece um endereço estável dentro do cluster e encaminha as requisições para os Pods que correspondem ao seu seletor. Assim, a aplicação não precisa conhecer o IP individual do Pod Redis.
-
-### Questão 5 — Como o Service `contador` sabe quais Pods devem receber as requisições?
-
-O Service utiliza o seletor `app: contador`. O Kubernetes identifica os Pods com essa label e os utiliza como destinos do serviço.
-
-### Questão 6 — O que aconteceu com os Pods quando o número de réplicas foi alterado de três para cinco e depois para dois?
-
-Ao aumentar para cinco, o Kubernetes criou Pods adicionais para atingir a quantidade solicitada. Ao reduzir para duas, removeu os Pods excedentes. O Deployment gerencia essa quantidade de acordo com o estado desejado.
-
-### Questão 7 — O Pod removido foi simplesmente perdido? Explique o que aconteceu após sua exclusão.
-
-O Pod excluído deixou de existir, mas o Deployment continuou tentando manter a quantidade desejada de réplicas. Por isso, o Kubernetes criou outro Pod para substituí-lo.
-
-### Questão 8 — O que caracteriza um Rolling Update? Por que ele é útil em aplicações que precisam permanecer disponíveis durante uma atualização?
-
-Rolling Update é a substituição gradual dos Pods da versão antiga pelos Pods da nova versão. Isso reduz a necessidade de interromper todas as instâncias ao mesmo tempo e pode minimizar a indisponibilidade durante uma atualização.
-
-### Questão 9 — Qual é a função do comando `kubectl rollout undo`?
-
-O comando desfaz uma atualização do Deployment, retornando a uma revisão anterior disponível no histórico. É útil quando uma nova versão apresenta problemas e é necessário restaurar uma configuração anterior.
-
-## 19. Roteiro do vídeo de entrega
-
-O vídeo deve mostrar:
-
-1. A estrutura dos arquivos e os manifestos YAML.
-2. O Minikube iniciado e o nó em estado `Ready`.
-3. A aplicação funcionando no navegador.
-4. Os Pods em execução.
-5. Os Deployments e os Services.
-6. A escalabilidade de três para cinco e depois para duas réplicas.
-7. A exclusão de um Pod e sua substituição automática.
-8. A construção da imagem `contador:2.0` e o Rolling Update.
-9. O Rollback e a confirmação da versão restaurada.
-
-## 20. Checklist final
-
-- [ ] Minikube iniciado.
-- [ ] Imagem `contador:1.0` construída.
-- [ ] Quatro manifestos YAML criados.
-- [ ] Três Pods Flask e um Pod Redis em execução.
-- [ ] Dois Deployments e dois Services funcionando.
-- [ ] Aplicação acessível pelo navegador.
-- [ ] Escalabilidade de três para cinco e depois para duas réplicas testada.
-- [ ] Self-Healing demonstrado.
-- [ ] Imagem `contador:2.0` construída e Rolling Update testado.
-- [ ] Rollback executado e verificado.
-- [ ] Respostas às nove questões incluídas.
-- [ ] Vídeo de demonstração gravado.
+> ⚠️ O rollback altera **apenas o cluster**. O arquivo `k8s/app-deployment.yaml` continua com `contador:2.0`; se `kubectl apply` for executado novamente, a versão 2.0 volta. Para o repositório refletir o que está rodando, basta voltar a linha da imagem para `contador:1.0` e fazer um commit.
 
 ---
 
-**Observação:** esta prática utiliza os manifestos solicitados no enunciado. O Deployment Redis apresentado não configura volume persistente, e o Service da aplicação não define uma porta `nodePort` fixa; o Minikube pode disponibilizar a aplicação por meio de `minikube service contador --url`.
+## Respostas das questões
+
+> _Revise e reescreva com suas próprias palavras, citando o que você observou nos seus comandos (nomes de Pods, saídas do `kubectl`)._
+
+**Questão 1 – O que representa o nó apresentado pelo comando `kubectl get nodes`?**
+O nó (node) é uma máquina, física ou virtual, que faz parte do cluster e fornece CPU, memória e rede para executar os Pods. No Minikube existe um único nó (chamado `minikube`), que acumula os papéis de plano de controle e de trabalhador. Em produção haveria vários nós.
+
+**Questão 2 – Por que usar `redis` em `REDIS_HOST` em vez do IP de um Pod Redis?**
+Pods são efêmeros: se forem recriados, ganham outro IP, e um IP fixo no código quebraria a aplicação. O nome `redis` é o nome do Service, resolvido pelo DNS interno do cluster para um endereço estável, que sempre leva ao Pod Redis atual.
+
+**Questão 3 – Por que a aplicação tem 3 réplicas e o Redis apenas 1?**
+O Flask é *stateless* (não guarda o contador) e pode ser replicado livremente para dividir carga e dar tolerância a falhas. O Redis guarda o estado (o valor do contador): com 2 ou mais instâncias independentes, cada uma teria seu próprio valor e o contador ficaria inconsistente. Replicar um banco exige configuração específica (replicação, cluster, StatefulSet), fora do escopo desta prática.
+
+**Questão 4 – Qual é a função do Service do Redis?**
+Fornecer um ponto de acesso estável (nome DNS `redis`, IP virtual e porta 6379) aos Pods do Redis, cujos IPs podem mudar. Ele usa o selector `app: redis` para descobrir os Pods e encaminha o tráfego a eles. Por ser ClusterIP, só é acessível dentro do cluster.
+
+**Questão 5 – Como o Service `contador` sabe quais Pods devem receber as requisições?**
+Pelo **selector** de labels. O Service declara `app: contador`; o Kubernetes mantém a lista (Endpoints) dos Pods que possuem essa label e estão prontos, e distribui as requisições entre eles (visível com `kubectl get endpoints contador`).
+
+**Questão 6 – O que aconteceu com os Pods quando as réplicas foram de 3 para 5 e depois para 2?**
+Ao passar para 5, o Deployment (via ReplicaSet) criou 2 Pods novos até atingir o estado desejado. Ao reduzir para 2, encerrou 3 Pods (ficaram em `Terminating` e sumiram). O Service passa a balancear entre os Pods existentes em cada momento.
+
+**Questão 7 – O Pod removido foi simplesmente perdido?**
+Não. O ReplicaSet percebeu que o estado atual estava abaixo do desejado e criou imediatamente um Pod substituto, com novo nome e novo IP. Isso é *self-healing*: o Kubernetes reconcilia continuamente o estado atual com o desejado.
+
+**Questão 8 – O que caracteriza um Rolling Update? Por que é útil em aplicações que precisam permanecer disponíveis?**
+Os Pods da versão antiga são substituídos **gradualmente** pelos da nova (sobem alguns novos e só depois removem alguns antigos), controlado por parâmetros como `maxSurge` e `maxUnavailable`. Assim sempre há Pods atendendo, evitando indisponibilidade durante a atualização, e problemas podem ser detectados cedo e revertidos.
+
+**Questão 9 – Qual é a função do comando `kubectl rollout undo`?**
+Reverter o Deployment para a revisão anterior (por padrão, a imediatamente anterior), também por meio de um rolling update. É a forma rápida de se recuperar de uma atualização com problema; outra revisão pode ser escolhida com `--to-revision=N`.
+
+---
+
+## Limitações
+
+O Redis roda com **1 réplica e sem volume persistente**: se o Pod do Redis for apagado ou recriado, o contador pode voltar a zero. Um `PersistentVolumeClaim` resolveria esse ponto, mas não faz parte do escopo desta prática.
+
+---
+
+## Solução de problemas
+
+| Sintoma | Causa provável | O que fazer |
+|---|---|---|
+| `ErrImagePull` / `ImagePullBackOff` | Imagem não existe no Minikube ou o pull tenta a internet | `minikube image ls \| grep contador`; refaça o build; confirme `imagePullPolicy: IfNotPresent` e o nome/tag exatos |
+| `CrashLoopBackOff` | App caiu ao iniciar (erro de código, Redis inacessível, variável incorreta) | `kubectl logs <pod>` e `kubectl describe pod <pod>` |
+| `Pending` | Falta de recursos no nó | `kubectl describe pod <pod>` (veja *Events*); reduza réplicas ou aumente recursos do Minikube |
+| Página não abre | `targetPort` errada, selector que não bate ou terminal do `minikube service` fechado | `kubectl get endpoints contador` (vazio = selector errado); mantenha o terminal aberto |
+| Erro de conexão com o Redis | `REDIS_HOST` diferente do nome do Service, ou o app ignora a variável | Confira o Service `redis`, o `env` do Deployment e o `app.py`; veja os logs |
+| Mudança no código não aparece | A tag da imagem não mudou ou o YAML não foi alterado | Construa com tag nova (2.0), altere o YAML e rode o `apply` |
+| Erro de YAML | Indentação, TAB ou campo digitado errado | Use espaços; rode `kubectl apply --dry-run=client -f k8s/` |
+
+---
+
+## Comandos úteis
+
+```bash
+kubectl get all                              # visão geral
+kubectl describe pod <pod>                   # eventos e detalhes
+kubectl logs <pod>                           # logs
+kubectl logs -l app=contador --prefix        # logs de todos os Pods do app
+kubectl delete -f k8s/                       # remove os recursos criados
+minikube stop                                # para o cluster
+minikube delete                              # apaga o cluster (recomeço do zero)
+```

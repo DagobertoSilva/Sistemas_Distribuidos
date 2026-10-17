@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis                   # vira o nome DNS "redis" dentro do cluster
+spec:
+  selector:
+    app: redis                  # envia para Pods com label app=redis
+  ports:
+    - port: 6379                # porta do Service
+      targetPort: 6379          # porta do container Redis

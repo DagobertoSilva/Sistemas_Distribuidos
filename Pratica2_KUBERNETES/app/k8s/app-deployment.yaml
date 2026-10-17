@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contador-deployment       # nome usado nos comandos rollout
+spec:
+  replicas: 3                     # estado desejado: 3 Pods
+  selector:
+    matchLabels:
+      app: contador               # este Deployment gerencia Pods com esta label
+  template:                       # molde dos Pods
+    metadata:
+      labels:
+        app: contador             # label dos Pods (deve bater com o selector)
+    spec:
+      containers:
+        - name: contador
+          image: contador:2.0
+          imagePullPolicy: IfNotPresent   # não baixar da internet
+          ports:
+            - containerPort: 5050
+          env:
+            - name: REDIS_HOST
+              value: "redis"      # DNS do Service do Redis
