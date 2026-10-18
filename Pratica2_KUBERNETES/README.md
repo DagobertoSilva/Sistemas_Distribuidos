@@ -759,6 +759,7 @@ kubectl rollout status deployment/contador-deployment
 ```bash
 kubectl get pods
 ```
+- 
 ```bash
 kubectl rollout history deployment/contador-deployment
 ```
