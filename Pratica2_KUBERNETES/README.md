@@ -200,7 +200,10 @@ minikube start
 ```bash
 kubectl get nodes
 ```
+listar os nós (Nodes) do seu cluster Kubernetes e verificar o estado deles.
+Node é uma máquina que participa do cluster Kubernetes e pode executar aplicações dentro de Pods. Pode ser uma máquina física ou virtual.
 
+Um Pod é a menor unidade que o Kubernetes consegue criar e gerenciar para executar uma aplicação.
 Saída esperada:
 
 ```
@@ -210,7 +213,6 @@ minikube   Ready    control-plane   1m    vX.XX.X
 
 O **nó (node)** é uma máquina, física ou virtual, que faz parte do cluster e fornece CPU, memória e rede para executar os Pods. `STATUS Ready` indica que está pronto para receber Pods. No Minikube existe um único nó, que também faz o papel de plano de controle (`control-plane`).
 
-![nodes](docs/img/01-nodes.png)
 
 ### 2. Construir a imagem no Minikube
 
@@ -220,6 +222,8 @@ O Minikube roda em um ambiente isolado e não enxerga as imagens do Docker local
 ```bash
 minikube image build -t contador:1.0 .
 ```
+Serve para construir uma imagem Docker diretamente no ambiente do Minikube, para que o Kubernetes possa utilizá-la ao criar os Pods da sua aplicação.
+
 ```bash
 minikube image ls 
 ```
@@ -246,92 +250,119 @@ Os 4 arquivos ficam na pasta `k8s/`.
 **`k8s/app-deployment.yaml`**
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: contador-deployment       # nome usado nos comandos rollout
-spec:
-  replicas: 3                     # estado desejado: 3 Pods
-  selector:
-    matchLabels:
-      app: contador               # este Deployment gerencia Pods com esta label
-  template:                       # molde dos Pods
-    metadata:
-      labels:
-        app: contador             # label dos Pods (deve bater com o selector)
-    spec:
-      containers:
-        - name: contador
-          image: contador:1.0
-          imagePullPolicy: IfNotPresent   # não baixar da internet
-          ports:
-            - containerPort: 5050
-          env:
-            - name: REDIS_HOST
-              value: "redis"      # DNS do Service do Redis
+
+apiVersion: apps/v1                 # Define a versão da API do Kubernetes usada para criar o Deployment
+kind: Deployment                    # Informa que o recurso criado será um Deployment
+
+metadata:                           # Inicia os metadados do recurso
+  name: contador-deployment         # Define o nome do Deployment, usado para identificá-lo nos comandos kubectl
+
+spec:                               # Inicia a especificação do comportamento desejado do Deployment
+  replicas: 3                       # Define que o Kubernetes deve manter 3 Pods da aplicação
+
+  selector:                         # Define como o Deployment identifica os Pods que gerencia
+    matchLabels:                    # Informa que a seleção será feita por meio de labels
+      app: contador                 # Seleciona Pods que possuem a label app=contador
+
+  template:                         # Define o modelo usado para criar cada Pod
+    metadata:                       # Inicia os metadados dos Pods que serão criados
+      labels:                       # Define as labels que serão adicionadas aos Pods
+        app: contador               # Adiciona a label app=contador, que deve corresponder ao selector
+
+    spec:                           # Define a especificação dos contêineres que existirão em cada Pod
+      containers:                   # Inicia a lista de contêineres do Pod
+        - name: contador            # Define o nome do contêiner dentro do Pod
+          image: contador:2.0       # Informa que o contêiner será criado usando a imagem contador, versão 2.0
+          imagePullPolicy: IfNotPresent  # Usa a imagem local se ela já existir; caso contrário, tenta obtê-la de um registro
+
+          ports:                    # Inicia a lista de portas declaradas para o contêiner
+            - containerPort: 5050    # Declara a porta 5050 em que a aplicação espera receber conexões
+
+          env:                      # Inicia a lista de variáveis de ambiente do contêiner
+            - name: REDIS_HOST      # Define o nome da variável de ambiente que a aplicação utilizará
+              value: "redis"        # Define redis como o endereço do Redis, normalmente o nome do Service Kubernetes
+      # DNS do Service do Redis
 ```
 
 **`k8s/redis-deployment.yaml`**
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: redis-deployment
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: redis
-  template:
-    metadata:
-      labels:
-        app: redis              # o Service do Redis procura esta label
-    spec:
-      containers:
-        - name: redis
-          image: redis:latest
-          ports:
-            - containerPort: 6379
+
+apiVersion: apps/v1                 # Define a versão da API do Kubernetes usada para criar o Deployment
+
+kind: Deployment                    # Informa que o recurso criado será um Deployment
+
+metadata:                           # Inicia os metadados do recurso
+  name: redis-deployment            # Define o nome do Deployment do Redis
+
+spec:                               # Inicia a especificação do estado desejado do Deployment
+  replicas: 1                       # Define que o Kubernetes deve manter 1 Pod do Redis
+
+  selector:                         # Define como o Deployment identifica os Pods que gerencia
+    matchLabels:                    # Especifica que a seleção será feita por meio de labels
+      app: redis                    # Seleciona os Pods que possuem a label app=redis
+
+  template:                         # Define o modelo utilizado para criar os Pods
+    metadata:                       # Inicia os metadados dos Pods
+      labels:                       # Define as labels que serão atribuídas aos Pods
+        app: redis                  # Adiciona a label app=redis, utilizada pelo selector e pelo Service do Redis
+
+    spec:                           # Define a especificação dos contêineres do Pod
+      containers:                   # Inicia a lista de contêineres que serão executados no Pod
+        - name: redis               # Define o nome do contêiner como redis
+          image: redis:latest       # Especifica a imagem oficial do Redis com a tag latest
+
+          ports:                    # Inicia a lista de portas declaradas para o contêiner
+            - containerPort: 6379    # Declara a porta padrão do Redis, usada para receber conexões
+
 ```
 
 **`k8s/redis-service.yaml`**
 
 ```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: redis                   # vira o nome DNS "redis" dentro do cluster
-spec:
-  selector:
-    app: redis                  # envia para Pods com label app=redis
-  ports:
-    - port: 6379                # porta do Service
-      targetPort: 6379          # porta do container Redis
+
+apiVersion: v1                      # Define a versão da API do Kubernetes utilizada para criar o Service
+
+kind: Service                       # Informa que o recurso criado será um Service
+
+metadata:                           # Inicia os metadados do recurso
+  name: redis                       # Define o nome do Service; normalmente, esse nome também será o DNS "redis" no cluster
+
+spec:                               # Inicia a especificação de funcionamento do Service
+  selector:                         # Define quais Pods receberão o tráfego encaminhado pelo Service
+    app: redis                      # Seleciona os Pods que possuem a label app=redis
+
+  ports:                            # Inicia a lista de portas disponibilizadas pelo Service
+    - port: 6379                    # Define a porta pela qual outros recursos acessam o Service
+      targetPort: 6379              # Define a porta de destino no Pod, onde o Redis recebe conexões
+
 ```
 
 **`k8s/app-service.yaml`**
 
 ```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: contador
-spec:
-  type: NodePort                # abre uma porta no nó do cluster
-  selector:
-    app: contador               # envia para Pods com label app=contador
-  ports:
-    - port: 5050                # porta do Service
-      targetPort: 5050          # porta em que o Flask escuta no container
+
+apiVersion: v1                      # Define a versão da API do Kubernetes utilizada para criar o Service
+
+kind: Service                       # Informa que o recurso criado será um Service
+
+metadata:                           # Inicia os metadados do recurso
+  name: redis                       # Define o nome do Service; normalmente, esse nome também será o DNS "redis" no cluster
+
+spec:                               # Inicia a especificação de funcionamento do Service
+  selector:                         # Define quais Pods receberão o tráfego encaminhado pelo Service
+    app: redis                      # Seleciona os Pods que possuem a label app=redis
+
+  ports:                            # Inicia a lista de portas disponibilizadas pelo Service
+    - port: 6379                    # Define a porta pela qual outros recursos acessam o Service
+      targetPort: 6379              # Define a porta de destino no Pod, onde o Redis recebe conexões
+
 ```
 
-Validação da sintaxe antes de aplicar:
 
-No Terminal: 
-```bash
-kubectl apply --dry-run=client -f k8s/
-```
+
+
+
 
 ### 4. Aplicar e acessar a aplicação
 No Terminal: 
@@ -409,7 +440,7 @@ kubectl describe service contador
 ```bash
 kubectl get pods -o wide
 ```
-
+- 
 Acesso pelo navegador:
 No Terminal
 ```bash
@@ -664,6 +695,18 @@ Saída Esperada:
 ```
 deployment.apps/contador-deployment configured
 ```
+
+Acesso pelo navegador:
+No Terminal
+```bash
+minikube service contador --url
+```
+
+
+http://127.0.0.1:65437
+
+![navegador](imagens/kubernetes.png)
+
 No Terminal: 
 ```bash
 kubectl rollout status deployment/contador-deployment
@@ -812,3 +855,56 @@ kubectl delete -f k8s/                       # remove os recursos criados
 minikube stop                                # para o cluster
 minikube delete                              # apaga o cluster (recomeço do zero)
 ```
+
+1. Remover só os recursos da prática (o cluster continua)
+
+```bash
+kubectl delete -f k8s/
+```
+Isso apaga os 2 Deployments, os 2 Services e, com eles, todos os Pods. Para conferir:
+
+```bash
+kubectl get all
+```
+
+Deve sobrar apenas o Service kubernetes, que é do próprio cluster.
+
+2. Remover as imagens do Minikube (opcional)
+
+```bash
+minikube image rm contador:1.0
+```
+
+```bash
+minikube image rm contador:2.0
+```
+
+3. Apagar o cluster inteiro (recomeço do zero)
+
+```bash
+minikube stop
+```
+#### só para o cluster, sem apagar nada
+```bash
+minikube delete    
+```
+#### apaga o cluster, incluindo Pods, imagens e configurações dele
+
+Para apagar também todos os clusters e o cache do Minikube:
+
+```bash
+minikube delete --all --purge
+```
+
+O --purge remove a pasta ~/.minikube. Depois disso, um novo minikube start baixa tudo de novo e demora mais.
+
+Se você usou o driver Docker, o minikube delete já remove o container do Minikube. Para ver se sobrou algo no Docker:
+
+```bash
+docker ps -a
+```
+```bash
+docker images
+```
+
+Se quiser liberar espaço no Docker (cuidado: isso apaga todos os containers parados, redes e imagens sem uso, inclusive de outros projetos):

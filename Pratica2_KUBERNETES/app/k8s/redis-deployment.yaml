@@ -1,19 +1,27 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: redis-deployment
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: redis
-  template:
-    metadata:
-      labels:
-        app: redis
-    spec:
-      containers:
-        - name: redis
-          image: redis:latest
-          ports:
-            - containerPort: 6379
+
+apiVersion: apps/v1                 # Define a versão da API do Kubernetes usada para criar o Deployment
+
+kind: Deployment                    # Informa que o recurso criado será um Deployment
+
+metadata:                           # Inicia os metadados do recurso
+  name: redis-deployment            # Define o nome do Deployment do Redis
+
+spec:                               # Inicia a especificação do estado desejado do Deployment
+  replicas: 1                       # Define que o Kubernetes deve manter 1 Pod do Redis
+
+  selector:                         # Define como o Deployment identifica os Pods que gerencia
+    matchLabels:                    # Especifica que a seleção será feita por meio de labels
+      app: redis                    # Seleciona os Pods que possuem a label app=redis
+
+  template:                         # Define o modelo utilizado para criar os Pods
+    metadata:                       # Inicia os metadados dos Pods
+      labels:                       # Define as labels que serão atribuídas aos Pods
+        app: redis                  # Adiciona a label app=redis, utilizada pelo selector e pelo Service do Redis
+
+    spec:                           # Define a especificação dos contêineres do Pod
+      containers:                   # Inicia a lista de contêineres que serão executados no Pod
+        - name: redis               # Define o nome do contêiner como redis
+          image: redis:latest       # Especifica a imagem oficial do Redis com a tag latest
+
+          ports:                    # Inicia a lista de portas declaradas para o contêiner
+            - containerPort: 6379    # Declara a porta padrão do Redis, usada para receber conexões

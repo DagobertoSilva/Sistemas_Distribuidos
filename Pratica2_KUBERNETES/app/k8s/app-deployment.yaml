@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: contador
-          image: contador:2.0
+          image: contador:1.0
           imagePullPolicy: IfNotPresent   # não baixar da internet
           ports:
             - containerPort: 5050

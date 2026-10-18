@@ -27,7 +27,7 @@ def home():
         <title>Prática Docker</title>
     </head>
     <body>
-        <h1>Olá, Docker! Prática de Sistemas Distribuídos</h1>
+        <h1>Olá, Kubernetes!</h1>
         <p>Número de acessos: {acessos}</p>
     </body>
     </html>
