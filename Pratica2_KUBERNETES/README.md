@@ -9,7 +9,7 @@
 
 Implantação e gerenciamento, com **Kubernetes (Minikube)**, de uma aplicação **Flask** que contabiliza o número de acessos usando o **Redis**. A aplicação é a mesma da Primeira Prática (que usava Docker Compose).
 
-> 🎥 **Vídeo de demonstração:** _cole aqui o link do vídeo_
+> 🎥 **Vídeo de demonstração:** [Prática 2 — Sistemas Distribuídos | Ciência da Computação — UFC Crateús](https://youtu.be/_SFxgOYtsaI)
 
 ---
 
