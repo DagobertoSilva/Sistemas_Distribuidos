@@ -849,9 +849,7 @@ clientes,tempo_total_servidor_s
 16,0.195000
 ```
 
-*(valores ilustrativos do formato, use os seus)*
 
-> **Dica:** rode cada cenário **3 a 5 vezes** e use a média. A primeira execução costuma ser mais lenta.
 
 ### Executando em máquinas diferentes (opcional)
 
@@ -895,13 +893,7 @@ Preencha com os valores medidos na sua máquina (média de várias execuções):
 | 8  | 8.000.000  | 0,185083 | 0,070652 |
 | 16 | 16.000.000 | 0,348325 | 0,196040 |
 
-**Ambiente de teste** (preencha):
 
-- Processador:
-- Memória RAM:
-- Sistema operacional:
-- Versão do Python:
-- Cliente e servidor na mesma máquina? (sim/não)
 
 ---
 
@@ -917,74 +909,3 @@ Pontos para discutir ao comparar os cenários:
 6. **Variação entre execuções.** Escalonamento do sistema operacional e outros programas abertos causam oscilações. Por isso, use a média de várias execuções.
 
 ---
-
-## 10. Problemas comuns
-
-| Problema | Causa provável | Solução |
-|---|---|---|
-| `ConnectionRefusedError` | Servidor não está rodando ou porta errada | Inicie `python3 server.py` antes do cliente e confira `--port` |
-| `Address already in use` | Porta 5000 ocupada | Use outra porta: `python3 server.py --port 5001` (e `--port 5001` no cliente) |
-| Lote do servidor "quebrado" em duas linhas | Clientes demoraram a conectar | Rode de novo; o script usa barreira, o que normalmente evita isso |
-| `BrokenBarrierError` | Um cliente falhou ao conectar | Veja a mensagem de erro de cada cliente e confirme servidor/porta |
-| `python3: command not found` (Windows) | Comando diferente | Use `python` ou `py` no lugar de `python3` |
-| `./run_all.sh: Permission denied` | Sem permissão de execução | `chmod +x run_all.sh` |
-| Soma "ERRO" | Problema de ordem de bytes ou dados incompletos | Confirme que cliente e servidor são exatamente os arquivos deste README |
-
----
-
-## 11. Roteiro para o vídeo
-
-O enunciado exige um vídeo explicando todo o funcionamento. Sugestão de roteiro (cerca de 5 a 8 minutos):
-
-1. **Apresentação (30 s):** nome, disciplina, objetivo da prática.
-2. **Arquitetura (1 min):** mostrar o diagrama da seção 2; explicar cliente, servidor e thread por conexão.
-3. **Protocolo (1 min):** cabeçalho de 4 bytes, números em 2 bytes, resposta de 8 bytes; por que binário.
-4. **Código do servidor (1 a 2 min):** `recv_exact`, criação de thread por cliente, soma, resposta, medição de tempo e uso do `lock`.
-5. **Código do cliente (1 min):** geração dos números, barreira para simultaneidade, validação da soma.
-6. **Demonstração (2 min):** servidor em um terminal, execução de 1, 4, 8 e 16 clientes no outro, mostrando os tempos.
-7. **Resultados e análise (1 min):** tabela da seção 8 e conclusões da seção 9 (incluindo o GIL).
-8. **Encerramento (15 s).**
-
----
-
-## 12. Publicando no GitHub
-
-### Opção A – Repositório
-
-```bash
-git init
-git add server.py client.py run_all.sh README.md resultados/
-git commit -m "Terceira prática: cliente e servidor multithread"
-git branch -M main
-git remote add origin https://github.com/SEU_USUARIO/terceira-pratica.git
-git push -u origin main
-```
-
-Crie antes o repositório vazio no site do GitHub (botão **New repository**), sem README inicial.
-
-### Opção B – Arquivo ZIP
-
-```bash
-cd ..
-zip -r terceira-pratica.zip terceira-pratica
-```
-
-No Windows, clique com o botão direito na pasta e escolha **Enviar para > Pasta compactada**.
-
-### Entrega
-
-- Link do repositório (ou o `.zip`)
-- Link do vídeo (YouTube não listado, Google Drive etc.)
-
----
-
-## Resumo dos comandos
-
-```bash
-# Terminal 1
-python3 server.py
-
-# Terminal 2
-./run_all.sh
-cat resultados/servidor.csv
-```
