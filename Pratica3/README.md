@@ -813,11 +813,7 @@ E no terminal do servidor:
 
 > A soma deve ficar perto de **500.000.000** (1.000.000 × média de 500).
 
-### Passo 7 – Rodar os 4 cenários (1, 4, 8 e 16 clientes)
 
-```bash
-./run_all.sh
-```
 
 Ou manualmente, um por vez:
 
@@ -894,10 +890,10 @@ Preencha com os valores medidos na sua máquina (média de várias execuções):
 
 | Nº de clientes | Total de números processados | Tempo total no servidor (s) | Tempo médio por cliente (s) |
 |:---:|:---:|:---:|:---:|
-| 1  | 1.000.000  |  |  |
-| 4  | 4.000.000  |  |  |
-| 8  | 8.000.000  |  |  |
-| 16 | 16.000.000 |  |  |
+| 1  | 1.000.000  | 0,026006 | 0,025456 |
+| 4  | 4.000.000  | 0,089421 | 0,085615 |
+| 8  | 8.000.000  | 0,185083 | 0,070652 |
+| 16 | 16.000.000 | 0,348325 | 0,196040 |
 
 **Ambiente de teste** (preencha):
 
