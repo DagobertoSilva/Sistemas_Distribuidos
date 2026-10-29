@@ -12,7 +12,7 @@ Mede o tempo de computação por cliente e o tempo total de cada "lote"
 """
 
 # ---------------------------------------------------------------------------
-# IMPORTAÇÕES 
+# IMPORTAÇÕES (todas da biblioteca padrão do Python, nada para instalar)
 # ---------------------------------------------------------------------------
 import argparse    # lê argumentos da linha de comando (--host, --port)
 import csv         # escreve o arquivo CSV com os resultados

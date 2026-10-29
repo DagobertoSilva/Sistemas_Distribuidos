@@ -212,7 +212,7 @@ def main():
     )
 
     # Barreira para N participantes: só libera quando N threads chamarem wait().
-    barreira_de_sincronizacao_entre_clientes = threading.Barrier(argumentos_recebidos.clients)
+    barreira_de_sincronizacao_entre_clientes = threading.Barrier(argumentos_recebidos.clients) # -------------------------------------------------------------------------
 
     # Dicionário compartilhado: chave = identificador do cliente (0, 1, 2...),
     # valor = tupla com o resultado daquele cliente.

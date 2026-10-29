@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package calculadora;
+
+// Serviço remoto com as quatro operações
+service Calculadora {
+  rpc Somar       (OperacaoRequest) returns (OperacaoResponse);
+  rpc Subtrair    (OperacaoRequest) returns (OperacaoResponse);
+  rpc Multiplicar (OperacaoRequest) returns (OperacaoResponse);
+  rpc Dividir     (OperacaoRequest) returns (OperacaoResponse);
+}
+
+// Requisição: os três operandos
+message OperacaoRequest {
+  double numero1 = 1;
+  double numero2 = 2;
+  double numero3 = 3;
+}
+
+// Resposta: o resultado da operação
+message OperacaoResponse {
+  double resultado = 1;
+}
+
+
