@@ -25,9 +25,7 @@ Aplicação de uma **cidade inteligente** em que **sensores** publicam dados e *
 13. [Passo 9 — Executando tudo](#passo-9--executando-tudo)
 14. [Passo 10 — Cenários de teste](#passo-10--cenários-de-teste)
 15. [Painel web do RabbitMQ](#painel-web-do-rabbitmq)
-16. [Problemas comuns](#problemas-comuns)
-17. [Entrega do projeto](#entrega-do-projeto)
-18. [Roteiro sugerido para o vídeo](#roteiro-sugerido-para-o-vídeo)
+
 
 ---
 
@@ -793,7 +791,5 @@ Em **http://localhost:15672** (`guest` / `guest`):
 - **Exchanges** → clique em `cidade_inteligente` para ver o tipo `topic` e as ligações (*Bindings*) de cada consumidor.
 - **Queues** → veja as filas temporárias (nomes `amq.gen-...`), uma por objeto em execução.
 - **Connections / Channels** → veja os programas conectados.
-
-Ótimo para mostrar no vídeo que a arquitetura é realmente Pub/Sub.
 
 ---
